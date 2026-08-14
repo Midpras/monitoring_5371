@@ -1,0 +1,9 @@
+/Daftar_Capaian_Harian_KUPANG.xlsx
+/app/.env
+/app/node_modules
+/app/vendor
+/app/public/build
+/app/storage/app/database
+/app/storage/app/private
+/app/storage/app/backups
+/app/storage/logs

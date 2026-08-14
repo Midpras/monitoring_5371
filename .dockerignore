@@ -1,0 +1,16 @@
+.git
+.codex
+.agents
+Daftar_Capaian_Harian_KUPANG.xlsx
+skills-lock.json
+SYSTEM-DESIGN.md
+app/.env
+app/database/database.sqlite
+app/vendor
+app/node_modules
+app/public/build
+app/bootstrap/cache/*.php
+app/storage/app/database
+app/storage/app/private
+app/storage/app/backups
+app/storage/logs
