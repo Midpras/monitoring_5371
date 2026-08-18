@@ -42,6 +42,7 @@ class ProgressImportService
         } catch (\Throwable $exception) {
             $result = ['rows' => [], 'errors' => [['message' => 'File tidak dapat dibaca: '.$exception->getMessage()]], 'warnings' => []];
         }
+        $result['warnings'] = array_merge($result['warnings'], $this->snapshotWarnings($result['rows'], $snapshotDate));
 
         $upload->update([
             'status' => $result['errors'] === [] ? 'validated' : 'invalid',
@@ -67,15 +68,24 @@ class ProgressImportService
         }
 
         $result = $this->parse(Storage::disk('local')->path($upload->stored_path));
+        $result['warnings'] = array_merge($result['warnings'], $this->snapshotWarnings($result['rows'], $upload->snapshot_date->toDateString()));
         if ($result['errors'] !== []) {
             $upload->update(['status' => 'invalid', 'validation_errors' => $result['errors'], 'validation_error_count' => count($result['errors'])]);
             throw new RuntimeException('Validasi file berubah dan impor dibatalkan.');
         }
 
         DB::transaction(function () use ($upload, $result) {
+            $claimed = ProgressUpload::query()
+                ->whereKey($upload->getKey())
+                ->where('status', 'validated')
+                ->update(['status' => 'importing', 'updated_at' => now()]);
+            if ($claimed !== 1) {
+                throw new RuntimeException('Upload sudah diproses atau tidak lagi tersedia.');
+            }
+            $upload->refresh();
+
             $previous = ProgressUpload::active()
                 ->whereDate('snapshot_date', $upload->snapshot_date)
-                ->lockForUpdate()
                 ->first();
             $nextVersion = ((int) ProgressUpload::whereDate('snapshot_date', $upload->snapshot_date)->max('version')) + 1;
 
@@ -83,7 +93,7 @@ class ProgressImportService
                 $previous->update(['superseded_at' => now()]);
             }
 
-            $upload->update(['version' => $nextVersion, 'status' => 'importing']);
+            $upload->update(['version' => $nextVersion]);
 
             foreach (array_chunk($result['rows'], 300) as $chunk) {
                 ProgressSnapshotRow::query()->insert(array_map(fn (array $row) => $row + [
@@ -117,8 +127,39 @@ class ProgressImportService
         });
 
         if ($storedPath) {
-            Storage::disk('local')->delete($storedPath);
+            if (! Storage::disk('local')->delete($storedPath)) {
+                throw new RuntimeException('Data terhapus dari database, tetapi file workbook gagal dihapus: '.$storedPath);
+            }
         }
+    }
+
+    /** @return array{deleted: int, errors: array<int, array<string, mixed>>} */
+    public function purgeStale(): array
+    {
+        $uploads = ProgressUpload::query()
+            ->where(function ($query) {
+                $query->whereIn('status', ['validated', 'invalid'])
+                    ->orWhere(function ($query) {
+                        $query->where('status', 'imported')
+                            ->whereNotNull('superseded_at')
+                            ->where('superseded_at', '<', now()->subDays(3));
+                    });
+            })
+            ->get();
+        $deleted = 0;
+        $errors = [];
+
+        foreach ($uploads as $upload) {
+            try {
+                $this->delete($upload);
+                $deleted++;
+            } catch (\Throwable $exception) {
+                report($exception);
+                $errors[] = ['id' => $upload->id, 'message' => $exception->getMessage()];
+            }
+        }
+
+        return compact('deleted', 'errors');
     }
 
     /** @return array{rows: array<int, array<string, mixed>>, errors: array<int, array<string, mixed>>, warnings: array<int, array<string, mixed>>} */
@@ -126,6 +167,7 @@ class ProgressImportService
     {
         $reader = IOFactory::createReaderForFile($path);
         $reader->setReadDataOnly(true);
+        $reader->setLoadSheetsOnly([self::SHEET]);
         $spreadsheet = $reader->load($path);
         $sheet = $spreadsheet->getSheetByName(self::SHEET);
         if (! $sheet) {
@@ -204,6 +246,51 @@ class ProgressImportService
         }
 
         return compact('rows', 'errors', 'warnings');
+    }
+
+    /** @param array<int, array<string, mixed>> $rows */
+    private function snapshotWarnings(array $rows, string $snapshotDate): array
+    {
+        $warnings = [];
+        foreach ($rows as $row) {
+            if ($row['capaian_ppl'] !== null && $row['target'] !== null && $row['capaian_ppl'] > $row['target']) {
+                $warnings[] = ['row' => $row['row_number'], 'message' => 'Capaian PPL melebihi Target.'];
+            }
+            if ($row['capaian_pml'] !== null && $row['capaian_ppl'] !== null && $row['capaian_pml'] > $row['capaian_ppl']) {
+                $warnings[] = ['row' => $row['row_number'], 'message' => 'Capaian PML melebihi Capaian PPL.'];
+            }
+        }
+
+        if ($rows === []) {
+            return $warnings;
+        }
+
+        $previous = ProgressUpload::active()
+            ->where('snapshot_date', '<', $snapshotDate)
+            ->orderByDesc('snapshot_date')
+            ->first();
+        if (! $previous) {
+            return $warnings;
+        }
+
+        $previousRows = ProgressSnapshotRow::query()
+            ->where('upload_id', $previous->id)
+            ->get(['assignment_key', 'capaian_ppl', 'capaian_pml'])
+            ->keyBy('assignment_key');
+        foreach ($rows as $row) {
+            $before = $previousRows->get($row['assignment_key']);
+            if (! $before) {
+                continue;
+            }
+            if ($row['capaian_ppl'] !== null && $before->capaian_ppl !== null && $row['capaian_ppl'] < $before->capaian_ppl) {
+                $warnings[] = ['row' => $row['row_number'], 'message' => 'Capaian PPL menurun dari snapshot sebelumnya.'];
+            }
+            if ($row['capaian_pml'] !== null && $before->capaian_pml !== null && $row['capaian_pml'] < $before->capaian_pml) {
+                $warnings[] = ['row' => $row['row_number'], 'message' => 'Capaian PML menurun dari snapshot sebelumnya.'];
+            }
+        }
+
+        return $warnings;
     }
 
     private function nullable(mixed $value): ?string

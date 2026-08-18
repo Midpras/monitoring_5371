@@ -16,11 +16,20 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        if (env('ADMIN_EMAIL') && env('ADMIN_PASSWORD')) {
-            User::updateOrCreate(
-                ['email' => env('ADMIN_EMAIL')],
-                ['name' => env('ADMIN_NAME', 'Administrator'), 'password' => Hash::make(env('ADMIN_PASSWORD')), 'role' => 'admin'],
-            );
+        $email = trim((string) env('ADMIN_EMAIL'));
+        $password = (string) env('ADMIN_PASSWORD');
+
+        if ($email === '' || $password === '') {
+            return;
+        }
+
+        $user = User::firstOrCreate(
+            ['email' => $email],
+            ['name' => env('ADMIN_NAME', 'Administrator'), 'password' => Hash::make($password), 'role' => 'admin'],
+        );
+
+        if (! $user->isAdmin()) {
+            $user->forceFill(['role' => 'admin'])->save();
         }
     }
 }

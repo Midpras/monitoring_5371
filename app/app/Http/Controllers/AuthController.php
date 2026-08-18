@@ -16,9 +16,16 @@ class AuthController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required', 'string']]);
-        if (! Auth::attempt([...$credentials, 'role' => 'admin'], $request->boolean('remember'))) {
-            return back()->withErrors(['email' => 'Email atau kata sandi tidak valid.'])->onlyInput('email');
+        $credentials = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+            'remember' => ['nullable', 'boolean'],
+        ]);
+        $remember = (bool) ($credentials['remember'] ?? false);
+        unset($credentials['remember']);
+
+        if (! Auth::attempt([...$credentials, 'role' => 'admin'], $remember)) {
+            return back()->withErrors(['email' => 'Email atau kata sandi tidak valid.'])->onlyInput('email', 'remember');
         }
 
         $request->session()->regenerate();

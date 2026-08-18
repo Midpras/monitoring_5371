@@ -232,10 +232,11 @@ Requirements:
 * calculate SHA-256 or equivalent checksum for uploaded files;
 * detect exact duplicate uploads;
 * allow corrected files for the same `snapshot_date`;
-* never silently delete historical imports;
+* allow the sole admin to permanently delete an import after simple confirmation;
 * preferably version imports for the same date;
 * only one version should be considered the active snapshot for dashboard calculations;
-* previous versions remain available for audit purposes.
+* superseded versions remain in history for three days, then are purged when the admin page opens;
+* deleted versions are not recoverable and do not reactivate an older version.
 
 Example:
 
@@ -283,6 +284,8 @@ Validation should include at minimum:
 * suspicious duplicate assignment keys;
 * malformed URLs should not break import;
 * missing PPL/PML values should be handled gracefully;
+* any invalid row rejects the entire file and reports all invalid rows;
+* suspicious values are warnings that require explicit confirmation before import;
 * invalid files must not partially modify production data.
 
 Use a DB transaction.
@@ -1188,4 +1191,3 @@ Risks / Assumptions
 ```
 
 Then stop and wait for the implementation phase.
-

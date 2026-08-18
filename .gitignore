@@ -7,3 +7,19 @@
 /app/storage/app/private
 /app/storage/app/backups
 /app/storage/logs
+
+# Local agent and Codex state
+/.agents/
+/.codex/
+**/.agents/
+**/.codex/
+/skills-lock.json
+
+# Local workbook uploads and sample data
+/*.xlsx
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

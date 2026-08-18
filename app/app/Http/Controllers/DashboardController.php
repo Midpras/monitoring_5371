@@ -59,18 +59,18 @@ class DashboardController extends Controller
         ));
     }
 
-    public function breakdown(Request $request): JsonResponse
+    public function dailyBreakdown(Request $request): JsonResponse
     {
         $data = $request->validate([
             'type' => ['required', Rule::in(['ppl', 'pml'])],
-            'worker' => ['required', 'string', 'max:255'],
+            'worker' => ['nullable', 'string', 'max:255'],
         ]);
 
-        return response()->json($this->dashboard->breakdown(
+        return response()->json($this->dashboard->dailyBreakdown(
             $request->string('date')->toString() ?: null,
             $this->activeFilters($request),
             $data['type'],
-            $data['worker'],
+            $data['worker'] ?? null,
         ));
     }
 
@@ -81,6 +81,16 @@ class DashboardController extends Controller
 
     private function activeFilters(Request $request): array
     {
-        return $request->only(['pml', 'ppl', 'status', 'jenis_mitra', 'search']);
+        $filters = $request->only(['pml', 'ppl', 'status', 'search']);
+
+        foreach (['pml', 'ppl'] as $key) {
+            $value = $request->input($key, []);
+            $filters[$key] = array_values(array_filter(
+                is_array($value) ? $value : [$value],
+                fn ($item) => is_string($item) && trim($item) !== '',
+            ));
+        }
+
+        return $filters;
     }
 }
