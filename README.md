@@ -42,6 +42,173 @@ Perilaku bootstrap:
 
 Jangan commit file .env dan jangan menyimpan file tersebut di dalam document root publik. Untuk cPanel, file .env harus berada di root project Laravel, satu tingkat di atas folder public.
 
+## Menjalankan secara lokal dengan XAMPP
+
+Panduan ini untuk Windows. XAMPP hanya digunakan untuk Apache dan PHP. MySQL tidak diperlukan karena aplikasi menggunakan SQLite.
+
+### 1. Persyaratan
+
+Install dan pastikan tersedia:
+
+- XAMPP dengan PHP 8.3 atau lebih baru
+- Composer
+- Node.js 20 atau lebih baru
+- Git
+
+Cek versi dari PowerShell:
+
+~~~powershell
+C:\xampp\php\php.exe -v
+composer --version
+node --version
+npm --version
+~~~
+
+### 2. Letakkan source code
+
+Clone repository ke folder `htdocs`, atau salin source code yang sudah ada:
+
+~~~powershell
+cd C:\xampp\htdocs
+git clone https://github.com/Midpras/monitoring_5371.git monitoring5371
+cd monitoring5371\app
+~~~
+
+Folder Laravel yang digunakan Apache adalah:
+
+~~~text
+C:\xampp\htdocs\monitoring5371\app\public
+~~~
+
+### 3. Aktifkan ekstensi PHP
+
+Buka `C:\xampp\php\php.ini` dan pastikan ekstensi berikut aktif, tanpa tanda `;` di awal baris:
+
+~~~ini
+extension=pdo_sqlite
+extension=sqlite3
+extension=mbstring
+extension=fileinfo
+extension=openssl
+extension=xml
+extension=zip
+extension=gd
+~~~
+
+### 4. Install dependency
+
+Jalankan dari folder `app`:
+
+~~~powershell
+cd C:\xampp\htdocs\monitoring5371\app
+composer install
+npm ci
+npm run build
+~~~
+
+### 5. Buat dan isi file .env
+
+~~~powershell
+Copy-Item .env.example .env
+~~~
+
+Edit `app/.env` dan gunakan konfigurasi lokal berikut:
+
+~~~env
+APP_NAME="SE2026 Monitoring"
+APP_ENV=local
+APP_DEBUG=true
+APP_URL=http://monitoring5371.local
+
+DB_CONNECTION=sqlite
+DB_DATABASE=C:/xampp/htdocs/monitoring5371/app/storage/app/database/progress.sqlite
+
+SESSION_DRIVER=file
+CACHE_STORE=file
+QUEUE_CONNECTION=sync
+FILESYSTEM_DISK=local
+
+ADMIN_NAME=Administrator
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=password-kuat-minimal-8-karakter
+~~~
+
+Jangan menggunakan path Docker `/var/www/html/...` pada konfigurasi XAMPP.
+
+### 6. Buat database dan akun admin
+
+~~~powershell
+New-Item -ItemType Directory -Force storage/app/database
+New-Item -ItemType File -Force storage/app/database/progress.sqlite
+php artisan key:generate
+php artisan migrate --force
+php artisan db:seed --force
+~~~
+
+Jika perintah `php` tidak dikenali, gunakan executable PHP XAMPP:
+
+~~~powershell
+C:\xampp\php\php.exe artisan key:generate
+C:\xampp\php\php.exe artisan migrate --force
+C:\xampp\php\php.exe artisan db:seed --force
+~~~
+
+### 7. Atur Virtual Host Apache
+
+Buka `C:\xampp\apache\conf\extra\httpd-vhosts.conf` dan tambahkan:
+
+~~~apache
+<VirtualHost *:80>
+    ServerName monitoring5371.local
+    DocumentRoot "C:/xampp/htdocs/monitoring5371/app/public"
+
+    <Directory "C:/xampp/htdocs/monitoring5371/app/public">
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+~~~
+
+Buka file hosts Windows sebagai Administrator:
+
+~~~text
+C:\Windows\System32\drivers\etc\hosts
+~~~
+
+Tambahkan:
+
+~~~text
+127.0.0.1 monitoring5371.local
+~~~
+
+Restart Apache dari XAMPP Control Panel. Jika port 80 digunakan aplikasi lain, ubah port Apache dan gunakan port tersebut pada URL.
+
+### 8. Uji aplikasi
+
+Start Apache dari XAMPP Control Panel, lalu buka:
+
+~~~text
+Dashboard publik: http://monitoring5371.local/
+Login admin:      http://monitoring5371.local/admin/login
+Halaman admin:    http://monitoring5371.local/admin
+Health check:     http://monitoring5371.local/healthz
+~~~
+
+Health check harus mengembalikan:
+
+~~~json
+{"status":"ok"}
+~~~
+
+Setelah mengubah Svelte atau CSS, build ulang frontend:
+
+~~~powershell
+cd C:\xampp\htdocs\monitoring5371\app
+npm run build
+~~~
+
+Jika terjadi error 500, periksa `app/storage/logs/laravel.log` dan `C:\xampp\apache\logs\error.log`.
+
 ## Deployment dengan cPanel
 
 Metode ini digunakan untuk hosting yang tidak menyediakan Docker. Pastikan paket hosting menyediakan Terminal atau SSH, Composer, dan PHP CLI.
