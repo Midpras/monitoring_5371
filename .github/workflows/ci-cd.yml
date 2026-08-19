@@ -33,12 +33,6 @@ jobs:
         working-directory: app
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run PHP tests
-        working-directory: app
-        env:
-          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-        run: php artisan test
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -53,6 +47,18 @@ jobs:
       - name: Build frontend
         working-directory: app
         run: npm run build
+
+      - name: Run PHP tests
+        working-directory: app
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+          QUEUE_CONNECTION: sync
+        run: php artisan test
 
   docker-build:
     name: Build production image
