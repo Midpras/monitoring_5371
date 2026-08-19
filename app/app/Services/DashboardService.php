@@ -129,21 +129,29 @@ class DashboardService
             }
 
             $workers = $groups->map(function (Collection $rows, string $key) use ($type, $workerKey, $includeDetails, $dailyByWorker, $dailyByAssignment) {
-                $details = $rows->map(function (ProgressSnapshotRow $row) use ($type, $dailyByAssignment) {
+                $details = $rows->groupBy('kode_subsls')->map(function (Collection $subSlsRows) use ($type, $dailyByAssignment) {
                     $metric = $type === 'ppl' ? 'capaian_ppl' : 'capaian_pml';
-                    $current = (int) ($row->{$metric} ?? 0);
+                    $row = $subSlsRows->first();
+                    $target = (int) $subSlsRows->sum(fn (ProgressSnapshotRow $item) => (int) ($item->target ?? 0));
+                    $ppl = (int) $subSlsRows->sum(fn (ProgressSnapshotRow $item) => (int) ($item->capaian_ppl ?? 0));
+                    $pml = (int) $subSlsRows->sum(fn (ProgressSnapshotRow $item) => (int) ($item->capaian_pml ?? 0));
+                    $daily = $subSlsRows->pluck('assignment_key')
+                        ->filter(fn (string $assignment) => array_key_exists($assignment, $dailyByAssignment))
+                        ->sum(fn (string $assignment) => $dailyByAssignment[$assignment]);
+                    $hasDaily = $subSlsRows->contains(fn (ProgressSnapshotRow $item) => array_key_exists($item->assignment_key, $dailyByAssignment));
+                    $current = $type === 'ppl' ? $ppl : $pml;
 
                     return [
                         'kode_subsls' => $row->kode_subsls,
                         'nama_sls' => $row->nama_sls ?: 'Nama SLS tidak tersedia',
                         'ppl_email' => $row->ppl_email,
                         'pml_email' => $row->pml_email,
-                        'target' => (int) ($row->target ?? 0),
-                        'ppl' => (int) ($row->capaian_ppl ?? 0),
-                        'pml' => (int) ($row->capaian_pml ?? 0),
+                        'target' => $target,
+                        'ppl' => $ppl,
+                        'pml' => $pml,
                         'cumulative' => $current,
-                        'daily' => $dailyByAssignment[$row->assignment_key] ?? null,
-                        'progress_percent' => $this->ratio($current, (int) ($row->target ?? 0)),
+                        'daily' => $hasDaily ? (int) $daily : null,
+                        'progress_percent' => $this->ratio($current, $target),
                         'status_produktivitas' => $row->status_produktivitas,
                     ];
                 })->values();
@@ -221,7 +229,7 @@ class DashboardService
         }
 
         $currentRows = $rowsByDate[$current->snapshot_date->toDateString()] ?? collect();
-        $previousRows = $previous ? $this->rows($previous->id, [])->get() : collect();
+        $previousRows = $previous ? $this->rows($previous->id, $filters)->get() : collect();
         $currentGroups = $this->groupWorkers($currentRows, $type);
         $previousGroups = $this->groupWorkers($previousRows, $type);
         $keys = $currentGroups->keys()->merge($previousGroups->keys())->unique();
@@ -240,9 +248,9 @@ class DashboardService
                 $previousGroup = $previousDate ? $groupsByDate[$previousDate]->get($key, collect()) : collect();
                 $target = (int) $rows->sum(fn (ProgressSnapshotRow $row) => (int) ($row->target ?? 0));
                 $previousTarget = (int) $previousGroup->sum(fn (ProgressSnapshotRow $row) => (int) ($row->target ?? 0));
-                $cumulative = $type === 'ppl'
+                $cumulative = $rows->isEmpty() ? null : ($type === 'ppl'
                     ? (int) $rows->sum(fn (ProgressSnapshotRow $row) => (int) ($row->capaian_ppl ?? 0))
-                    : (int) $rows->sum(fn (ProgressSnapshotRow $row) => (int) ($row->capaian_pml ?? 0));
+                    : (int) $rows->sum(fn (ProgressSnapshotRow $row) => (int) ($row->capaian_pml ?? 0)));
                 return [
                     'date' => $date,
                     'daily' => array_key_exists($key, $dailyByDate[$date]) ? $dailyByDate[$date][$key] : null,
@@ -352,33 +360,15 @@ class DashboardService
 
     private function dailyByWorker(Collection $currentRows, Collection $previousRows, string $type): array
     {
-        if ($previousRows->isEmpty()) {
-            return [];
-        }
-        $metric = $type === 'ppl' ? 'capaian_ppl' : 'capaian_pml';
-        $previousByAssignment = $previousRows->keyBy('assignment_key');
-        $previousByCode = $previousRows->groupBy('kode_subsls')->map(fn (Collection $rows) => (int) $rows->sum($metric));
+        $dailyByAssignment = $this->dailyByAssignment($currentRows, $previousRows, $type);
         $daily = [];
-        $fallback = [];
 
         foreach ($currentRows as $row) {
-            $worker = $this->workerKey($row, $type);
-            $current = (int) ($row->{$metric} ?? 0);
-            $before = $previousByAssignment->get($row->assignment_key);
-            if ($before) {
-                $daily[$worker] = ($daily[$worker] ?? 0) + $current - (int) ($before->{$metric} ?? 0);
+            if (! array_key_exists($row->assignment_key, $dailyByAssignment)) {
                 continue;
             }
-            $fallback[$row->kode_subsls]['workers'][$worker] = true;
-            $fallback[$row->kode_subsls]['current'] = ($fallback[$row->kode_subsls]['current'] ?? 0) + $current;
-        }
-
-        foreach ($fallback as $code => $data) {
-            $workers = array_keys($data['workers']);
-            $worker = $workers[0] ?? null;
-            if ($worker !== null) {
-                $daily[$worker] = ($daily[$worker] ?? 0) + $data['current'] - (int) ($previousByCode->get($code, 0));
-            }
+            $worker = $this->workerKey($row, $type);
+            $daily[$worker] = ($daily[$worker] ?? 0) + $dailyByAssignment[$row->assignment_key];
         }
 
         return $daily;
@@ -392,16 +382,28 @@ class DashboardService
         $metric = $type === 'ppl' ? 'capaian_ppl' : 'capaian_pml';
         $previousByAssignment = $previousRows->keyBy('assignment_key');
         $previousByCode = $previousRows->groupBy('kode_subsls')->map(fn (Collection $rows) => (int) $rows->sum($metric));
+        $daily = [];
+        $fallback = [];
 
-        return $currentRows->mapWithKeys(function (ProgressSnapshotRow $row) use ($metric, $previousByAssignment, $previousByCode) {
+        foreach ($currentRows as $row) {
             $current = (int) ($row->{$metric} ?? 0);
             $before = $previousByAssignment->get($row->assignment_key);
-            $daily = $before
-                ? $current - (int) ($before->{$metric} ?? 0)
-                : $current - (int) $previousByCode->get($row->kode_subsls, 0);
+            if ($before) {
+                $daily[$row->assignment_key] = $current - (int) ($before->{$metric} ?? 0);
+            } else {
+                $fallback[$row->kode_subsls][] = $row;
+            }
+        }
 
-            return [$row->assignment_key => $daily];
-        })->all();
+        foreach ($fallback as $code => $rows) {
+            $delta = array_sum(array_map(fn (ProgressSnapshotRow $row) => (int) ($row->{$metric} ?? 0), $rows))
+                - (int) $previousByCode->get($code, 0);
+            foreach ($rows as $index => $row) {
+                $daily[$row->assignment_key] = $index === 0 ? $delta : 0;
+            }
+        }
+
+        return $daily;
     }
 
     private function comparisonRows(Collection $currentRows, Collection $previousRows): Collection

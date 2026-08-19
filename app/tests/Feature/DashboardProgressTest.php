@@ -55,6 +55,22 @@ class DashboardProgressTest extends TestCase
         $this->assertSame(['2026-08-12', '2026-08-15', '2026-08-17'], array_column($recent, 'date'));
     }
 
+    public function test_ppl_breakdown_totals_match_the_aggregated_subsls_rows(): void
+    {
+        $this->duplicateSubSlsSnapshot('2026-08-14', ['old-1' => 5, 'old-2' => 8]);
+        $this->duplicateSubSlsSnapshot('2026-08-15', ['new-1' => 6, 'new-2' => 7]);
+
+        $worker = $this->getJson('/api/dashboard/ppl')->assertOk()->json('data.0');
+        $breakdown = $this->getJson('/api/dashboard/daily-breakdown?type=ppl&worker=ppl%40example.test')
+            ->assertOk()->json('data.1.workers.0');
+
+        $this->assertSame(13, $worker['recent'][1]['cumulative']);
+        $this->assertSame(0, $worker['recent'][1]['daily']);
+        $this->assertCount(1, $breakdown['rows']);
+        $this->assertSame($breakdown['cumulative'], array_sum(array_column($breakdown['rows'], 'cumulative')));
+        $this->assertSame($breakdown['daily'], array_sum(array_column($breakdown['rows'], 'daily')));
+    }
+
     private function snapshot(string $date, int $target, int $ppl, int $pml, string $pplEmail, string $pmlEmail): void
     {
         $upload = ProgressUpload::create([
@@ -81,5 +97,35 @@ class DashboardProgressTest extends TestCase
             'capaian_pml' => $pml,
             'target' => $target,
         ]);
+    }
+
+    private function duplicateSubSlsSnapshot(string $date, array $assignments): void
+    {
+        $upload = ProgressUpload::create([
+            'snapshot_date' => $date,
+            'version' => 1,
+            'original_filename' => $date.'.xlsx',
+            'file_checksum' => hash('sha256', $date),
+            'status' => 'imported',
+            'row_count' => count($assignments),
+            'imported_at' => now(),
+        ]);
+
+        foreach ($assignments as $assignment => $ppl) {
+            ProgressSnapshotRow::create([
+                'upload_id' => $upload->id,
+                'assignment_key' => '5371010001000101|'.$assignment,
+                'row_fingerprint' => hash('sha256', $date.$assignment),
+                'row_number' => 2,
+                'kode_subsls' => '5371010001000101',
+                'nama_sls' => 'RT 001',
+                'ppl_id' => $assignment,
+                'ppl_email' => 'ppl@example.test',
+                'pml_email' => 'pml@example.test',
+                'capaian_ppl' => $ppl,
+                'capaian_pml' => $ppl,
+                'target' => 50,
+            ]);
+        }
     }
 }
