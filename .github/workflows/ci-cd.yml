@@ -96,5 +96,5 @@ jobs:
           test -n "$COOLIFY_DEPLOY_WEBHOOK" || { echo "::error::Missing COOLIFY_DEPLOY_WEBHOOK"; exit 1; }
           test -n "$COOLIFY_API_TOKEN" || { echo "::error::Missing COOLIFY_API_TOKEN"; exit 1; }
           curl --fail --show-error --retry 3 --retry-delay 5 \
-            --request GET "$COOLIFY_DEPLOY_WEBHOOK" \
+            --request POST "$COOLIFY_DEPLOY_WEBHOOK" \
             --header "Authorization: Bearer $COOLIFY_API_TOKEN"
