@@ -365,6 +365,8 @@ Login dengan email dan password dari file .env, lalu buka /admin/users untuk mem
 
 ## Deployment dengan Coolify dan Docker
 
+Panduan lengkap CI/CD GitHub Actions dan konfigurasi Coolify tersedia di [docs/CI-CD-COOLIFY.md](docs/CI-CD-COOLIFY.md).
+
 ### 1. Buat application
 
 Di Coolify:
