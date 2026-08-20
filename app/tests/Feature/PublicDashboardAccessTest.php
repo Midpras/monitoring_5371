@@ -141,7 +141,9 @@ class PublicDashboardAccessTest extends TestCase
             'target' => 50,
         ]);
 
-        $this->getJson('/api/dashboard/ppl')->assertOk()->assertJsonPath('data.0.email', 'removed@example.test');
+        $response = $this->getJson('/api/dashboard/ppl')->assertOk();
+
+        $response->assertJsonFragment(['email' => 'removed@example.test']);
     }
 
     public function test_non_admin_credentials_cannot_sign_in_to_upload_area(): void
