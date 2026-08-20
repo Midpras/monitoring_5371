@@ -77,8 +77,8 @@
             const result = await Promise.allSettled([
                 get('/api/dashboard/summary?' + params, controller.signal),
                 get('/api/dashboard/timeseries?' + params, controller.signal),
-                get('/api/dashboard/ppl?' + apiParams({ sort: 'daily_deficit', direction: 'desc', page: pplPage, per_page: 25 }), controller.signal),
-                get('/api/dashboard/pml?' + apiParams({ sort: 'daily_deficit', direction: 'desc', page: pmlPage, per_page: 25 }), controller.signal),
+                get('/api/dashboard/ppl?' + apiParams({ sort: 'ppl', direction: 'desc', page: pplPage, per_page: 25 }), controller.signal),
+                get('/api/dashboard/pml?' + apiParams({ sort: 'pml', direction: 'desc', page: pmlPage, per_page: 25 }), controller.signal),
                 get('/api/dashboard/filters?' + params, controller.signal),
             ]);
             if (requestId !== loadSequence) return;
@@ -151,7 +151,7 @@
 
     async function retryTable(type) {
         try {
-            const state = { sort: 'daily_deficit', direction: 'desc', page: type === 'ppl' ? pplPage : pmlPage, per_page: 25 };
+            const state = { sort: type, direction: 'desc', page: type === 'ppl' ? pplPage : pmlPage, per_page: 25 };
             const body = await get(`/api/dashboard/${type}?${apiParams(state)}`);
             if (type === 'ppl') ppl = body;
             else pml = body;
@@ -181,7 +181,7 @@
         childController = new AbortController();
         childPpl = { worker: String(row.id), loading: true, data: [], error: '' };
         try {
-            const body = await get('/api/dashboard/ppl?' + apiParams({ pml: [row.id], sort: 'daily_deficit', direction: 'desc', page: 1, per_page: 100 }), childController.signal);
+            const body = await get('/api/dashboard/ppl?' + apiParams({ pml: [row.id], sort: 'ppl', direction: 'desc', page: 1, per_page: 100 }), childController.signal);
             if (expandedPml !== String(row.id)) return;
             childPpl = { worker: String(row.id), loading: false, data: body.data || [], error: '' };
         } catch (exception) {

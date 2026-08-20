@@ -439,7 +439,7 @@ class DashboardService
         $rows = $rows->sortBy(function (array $row) use ($sort) {
             $value = $row[$sort] ?? null;
             return $value === null ? PHP_INT_MAX : $value;
-        }, SORT_REGULAR, ! $implicitSort && $direction === 'desc')->values();
+        }, SORT_REGULAR, $implicitSort || $direction === 'desc')->values();
         $total = $rows->count();
 
         return [
